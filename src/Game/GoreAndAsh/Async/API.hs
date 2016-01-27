@@ -63,9 +63,12 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
 instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m) where
   asyncEventM !io = do 
     av <- liftIO . async $! io 
-    state $ registerAsyncValue av
+    state $! registerAsyncValue av
 
-  asyncEventBoundM = fail "unimplemented"
+  asyncEventBoundM !io = do 
+    av <- liftIO . asyncBound $! io 
+    state $! registerAsyncValue av
+
   asyncPollM = fail "unimplemented"
   asyncWaitM = fail "unimplemented"
 

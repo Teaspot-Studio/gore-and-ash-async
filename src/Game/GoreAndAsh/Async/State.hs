@@ -14,6 +14,7 @@ module Game.GoreAndAsh.Async.State(
   , emptyAsyncState
   , registerAsyncValue
   , getFinishedAsyncValue
+  , cancelAsyncValue
   ) where
 
 import Control.Concurrent.Async
@@ -82,3 +83,13 @@ getFinishedAsyncValue i AsyncState{..} = check <$> H.lookup i asyncValues
   check v = case v of 
     Left _ -> Nothing
     Right a -> Just a
+
+-- | Unregister given id and return stored async
+cancelAsyncValue :: AsyncId -> AsyncState s -> (Maybe (Async Dynamic), AsyncState s)
+cancelAsyncValue i s = (check =<< H.lookup i (asyncValues s), s {
+    asyncValues = H.delete i . asyncValues $! s
+  })
+  where
+  check v = case v of 
+    Left a -> Just a
+    Right _ -> Nothing

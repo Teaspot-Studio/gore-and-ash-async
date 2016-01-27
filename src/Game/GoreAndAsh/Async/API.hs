@@ -57,10 +57,8 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
   -- Could throw 'MonadAsyncExcepion'.
   asyncPollM :: Typeable a => AsyncId -> m (Event (Either SomeException a))
 
-  -- | Check state of concurrent value
-  --
-  -- Could throw 'MonadAsyncExcepion'.
-  asyncWaitM :: Typeable a =>  AsyncId -> m a
+  -- | Stops given async execution
+  asyncCancelM :: AsyncId -> m ()
 
 instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m) where
   asyncEventM !io = do 
@@ -84,10 +82,14 @@ instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m
             Nothing -> throwM $! AsyncWrongType (typeRep (Proxy :: Proxy a)) (dynTypeRep da)
             Just a -> return . Event . Right $! a
 
-  asyncWaitM = fail "unimplemented"
+  asyncCancelM i = do 
+    mav <- state $! cancelAsyncValue i
+    case mav of 
+      Nothing -> return ()
+      Just av -> liftIO $! cancel av 
 
 instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, MonadTrans mt) => MonadAsync (mt m) where 
   asyncEventM = lift . asyncEventM
   asyncEventBoundM = lift . asyncEventBoundM
   asyncPollM = lift . asyncPollM
-  asyncWaitM = lift . asyncWaitM
+  asyncCancelM = lift . asyncCancelM

@@ -39,3 +39,4 @@ library
                       RecordWildCards
                       TypeFamilies
                       UndecidableInstances
+                      BangPatterns

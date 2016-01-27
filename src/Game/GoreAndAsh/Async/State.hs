@@ -12,6 +12,7 @@ module Game.GoreAndAsh.Async.State(
   , AsyncId(..)
   , ValueMap
   , emptyAsyncState
+  , registerAsyncValue
   ) where
 
 import Control.Concurrent.Async
@@ -39,6 +40,7 @@ type ValueMap = HashMap AsyncId (Async Dynamic)
 --         an empty data type.
 data AsyncState s = AsyncState {
   asyncValues :: !ValueMap 
+, asyncNextId :: !Int
 , asyncNextState :: !s
 } deriving (Generic)
 
@@ -47,12 +49,22 @@ instance NFData s => NFData (AsyncState s) where
     asyncValues `seq`
     asyncNextState `deepseq`
     ()
-    
+
 -- | Create inital async state
 --
 -- [@s@] -  state of next module
 emptyAsyncState :: s -> AsyncState s 
 emptyAsyncState s = AsyncState {
     asyncValues = H.empty
+  , asyncNextId = 0
   , asyncNextState = s
   }
+
+-- | Put async value into internal state
+registerAsyncValue :: Typeable a => Async a -> AsyncState s -> (AsyncId, AsyncState s)
+registerAsyncValue av s = (i, s {
+    asyncNextId = asyncNextId s + 1
+  , asyncValues = H.insert i (toDyn <$> av) . asyncValues $! s
+  })
+  where
+    i = AsyncId . asyncNextId $! s

@@ -11,11 +11,12 @@ module Game.GoreAndAsh.Async.API(
     MonadAsync(..)
   ) where
 
+import Control.Concurrent.Async 
 import Control.DeepSeq
 import Control.Exception 
 import Control.Monad.Catch 
 import Control.Monad.IO.Class 
-import Control.Monad.Trans 
+import Control.Monad.State.Strict
 import Control.Wire
 import Data.Typeable
 import GHC.Generics (Generic)
@@ -60,7 +61,10 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
   asyncWaitM :: AsyncId -> m a
 
 instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m) where
-  asyncEventM = fail "unimplemented"
+  asyncEventM !io = do 
+    av <- liftIO . async $! io 
+    state $ registerAsyncValue av
+
   asyncEventBoundM = fail "unimplemented"
   asyncPollM = fail "unimplemented"
   asyncWaitM = fail "unimplemented"

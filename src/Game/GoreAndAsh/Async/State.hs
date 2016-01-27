@@ -13,10 +13,12 @@ module Game.GoreAndAsh.Async.State(
   , ValueMap
   , emptyAsyncState
   , registerAsyncValue
+  , getFinishedAsyncValue
   ) where
 
 import Control.Concurrent.Async
 import Control.DeepSeq
+import Control.Exception
 import Data.Dynamic 
 import Data.Hashable
 import GHC.Generics (Generic)
@@ -32,7 +34,7 @@ instance Hashable AsyncId
 instance NFData AsyncId 
 
 -- | Container of async values
-type ValueMap = HashMap AsyncId (Async Dynamic)
+type ValueMap = HashMap AsyncId (Either (Async Dynamic) (Either SomeException Dynamic))
 
 -- | Internal state of asynchronious core module
 --
@@ -64,7 +66,19 @@ emptyAsyncState s = AsyncState {
 registerAsyncValue :: Typeable a => Async a -> AsyncState s -> (AsyncId, AsyncState s)
 registerAsyncValue av s = (i, s {
     asyncNextId = asyncNextId s + 1
-  , asyncValues = H.insert i (toDyn <$> av) . asyncValues $! s
+  , asyncValues = H.insert i (Left $ toDyn <$> av) . asyncValues $! s
   })
   where
     i = AsyncId . asyncNextId $! s
+
+-- | Try to get value of given async value
+--
+-- Note: first 'Maybe' layer is test for existense of given async value
+-- 
+-- Note: second 'Maybe' layer is test is the value is finished 
+getFinishedAsyncValue :: AsyncId -> AsyncState s -> Maybe (Maybe (Either SomeException Dynamic))
+getFinishedAsyncValue i AsyncState{..} = check <$> H.lookup i asyncValues 
+  where 
+  check v = case v of 
+    Left _ -> Nothing
+    Right a -> Just a

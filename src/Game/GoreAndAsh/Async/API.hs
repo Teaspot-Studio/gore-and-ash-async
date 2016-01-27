@@ -9,6 +9,7 @@ Portability : POSIX
 -}
 module Game.GoreAndAsh.Async.API(
     MonadAsync(..)
+  , MonadAsyncExcepion(..)
   ) where
 
 import Control.Concurrent.Async 
@@ -18,7 +19,8 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class 
 import Control.Monad.State.Strict
 import Control.Wire
-import Data.Typeable
+import Control.Wire.Unsafe.Event
+import Data.Dynamic
 import GHC.Generics (Generic)
 import Prelude hiding (id, (.))
 
@@ -52,13 +54,13 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
 
   -- | Check state of concurrent value
   --
-  -- Could also return 'MonadAsyncExcepion' as 'Event' payload.
-  asyncPollM :: AsyncId -> m (Event (Either SomeException a))
+  -- Could throw 'MonadAsyncExcepion'.
+  asyncPollM :: Typeable a => AsyncId -> m (Event (Either SomeException a))
 
   -- | Check state of concurrent value
   --
   -- Could throw 'MonadAsyncExcepion'.
-  asyncWaitM :: AsyncId -> m a
+  asyncWaitM :: Typeable a =>  AsyncId -> m a
 
 instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m) where
   asyncEventM !io = do 
@@ -69,7 +71,19 @@ instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m
     av <- liftIO . asyncBound $! io 
     state $! registerAsyncValue av
 
-  asyncPollM = fail "unimplemented"
+  asyncPollM :: forall a . Typeable a => AsyncId -> AsyncT s m (Event (Either SomeException a))
+  asyncPollM i = do 
+    mav <- getFinishedAsyncValue i <$> AsyncT get 
+    case mav of 
+      Nothing -> throwM . AsyncNotFound $! i 
+      Just av -> case av of 
+        Nothing -> return NoEvent 
+        Just ev -> case ev of 
+          Left e -> return . Event . Left $! e
+          Right da -> case fromDynamic da of 
+            Nothing -> throwM $! AsyncWrongType (typeRep (Proxy :: Proxy a)) (dynTypeRep da)
+            Just a -> return . Event . Right $! a
+
   asyncWaitM = fail "unimplemented"
 
 instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, MonadTrans mt) => MonadAsync (mt m) where 

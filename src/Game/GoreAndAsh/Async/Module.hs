@@ -12,6 +12,7 @@ module Game.GoreAndAsh.Async.Module(
     AsyncT(..)
   ) where
 
+import Control.Concurrent.Async
 import Control.Monad.Catch
 import Control.Monad.Fix 
 import Control.Monad.State.Strict
@@ -44,10 +45,27 @@ instance GameModule m s => GameModule (AsyncT s m) (AsyncState s) where
   type ModuleState (AsyncT s m) = AsyncState s
   runModule (AsyncT m) s = do
     ((a, s'), nextState) <- runModule (runStateT m s) (asyncNextState s)
-    return (a, s' {
+    s'' <- pollAsyncs . purgeAsyncs $! s' 
+    return (a, s'' {
         asyncNextState = nextState 
-      })  
+      })
   
   newModuleState = emptyAsyncState <$> newModuleState
   withModule _ = id
   cleanupModule _ = return ()
+
+-- | Polls all async values and update values
+pollAsyncs :: MonadIO m => AsyncState s -> m (AsyncState s)
+pollAsyncs s = do
+  mp <- mapM pollVal . asyncValues $! s 
+  return $! s {
+      asyncValues = mp
+    }
+  where
+  pollVal ev = case ev of 
+    Left a -> do 
+      mr <- liftIO . poll $! a
+      case mr of 
+        Nothing -> return ev 
+        Just r -> return . Right $! r
+    _ -> return ev

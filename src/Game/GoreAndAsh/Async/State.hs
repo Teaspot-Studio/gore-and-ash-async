@@ -15,12 +15,14 @@ module Game.GoreAndAsh.Async.State(
   , registerAsyncValue
   , getFinishedAsyncValue
   , cancelAsyncValue
+  , purgeAsyncs
   ) where
 
 import Control.Concurrent.Async
 import Control.DeepSeq
 import Control.Exception
 import Data.Dynamic 
+import Data.Either
 import Data.Hashable
 import GHC.Generics (Generic)
 
@@ -65,7 +67,7 @@ emptyAsyncState s = AsyncState {
 
 -- | Put async value into internal state
 registerAsyncValue :: Typeable a => Async a -> AsyncState s -> (AsyncId, AsyncState s)
-registerAsyncValue av s = (i, s {
+registerAsyncValue !av !s = (i, s {
     asyncNextId = asyncNextId s + 1
   , asyncValues = H.insert i (Left $ toDyn <$> av) . asyncValues $! s
   })
@@ -78,7 +80,7 @@ registerAsyncValue av s = (i, s {
 -- 
 -- Note: second 'Maybe' layer is test is the value is finished 
 getFinishedAsyncValue :: AsyncId -> AsyncState s -> Maybe (Maybe (Either SomeException Dynamic))
-getFinishedAsyncValue i AsyncState{..} = check <$> H.lookup i asyncValues 
+getFinishedAsyncValue !i AsyncState{..} = check <$> H.lookup i asyncValues 
   where 
   check v = case v of 
     Left _ -> Nothing
@@ -86,10 +88,16 @@ getFinishedAsyncValue i AsyncState{..} = check <$> H.lookup i asyncValues
 
 -- | Unregister given id and return stored async
 cancelAsyncValue :: AsyncId -> AsyncState s -> (Maybe (Async Dynamic), AsyncState s)
-cancelAsyncValue i s = (check =<< H.lookup i (asyncValues s), s {
+cancelAsyncValue !i !s = (check =<< H.lookup i (asyncValues s), s {
     asyncValues = H.delete i . asyncValues $! s
   })
   where
   check v = case v of 
     Left a -> Just a
     Right _ -> Nothing
+
+-- | Deletes calculated values
+purgeAsyncs :: AsyncState s -> AsyncState s 
+purgeAsyncs !s = s {
+    asyncValues = H.filter isLeft . asyncValues $! s
+  }

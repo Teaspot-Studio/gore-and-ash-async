@@ -36,7 +36,7 @@ import Game.GoreAndAsh.Async.State
 --   deriving (Functor, Applicative, Monad, MonadFix, MonadIO, MonadThrow, MonadCatch, MonadAsync)
 -- @
 --
--- The module is pure within first phase (see 'ModuleStack' docs), therefore 'Identity' can be used as end monad.
+-- The module is NOT pure within first phase (see 'ModuleStack' docs), therefore currently only 'IO' end monad can handler the module.
 newtype AsyncT s m a = AsyncT { runAsyncT :: StateT (AsyncState s) m a }
   deriving (Functor, Applicative, Monad, MonadState (AsyncState s), MonadFix, MonadTrans, MonadIO, MonadThrow, MonadCatch, MonadMask)
 

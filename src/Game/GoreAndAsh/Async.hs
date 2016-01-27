@@ -12,7 +12,7 @@ The core module contains API for embedding concurrent IO actions (async and sync
 
 The module does not depend on any other core modules, so 'AsyncT' could be placed at any place in monad stack.
 
-The module is pure within first phase (see 'ModuleStack' docs), therefore 'Identity' can be used as end monad.
+The module is NOT pure within first phase (see 'ModuleStack' docs), therefore currently only 'IO' end monad can handler the module.
 
 Example of embedding:
 
@@ -46,6 +46,7 @@ module Game.GoreAndAsh.Async(
   -- * Low-level
     AsyncState
   , AsyncT 
+  , AsyncId
   , MonadAsync(..)
   ) where
 

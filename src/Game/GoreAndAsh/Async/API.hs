@@ -11,19 +11,62 @@ module Game.GoreAndAsh.Async.API(
     MonadAsync(..)
   ) where
 
+import Control.DeepSeq
+import Control.Exception 
+import Control.Monad.Catch 
+import Control.Monad.IO.Class 
 import Control.Monad.Trans 
+import Control.Wire
+import Data.Typeable
+import GHC.Generics (Generic)
+import Prelude hiding (id, (.))
 
 import Game.GoreAndAsh.Async.Module 
+import Game.GoreAndAsh.Async.State
+
+-- | Exception of the async monadic API
+data MonadAsyncExcepion =
+    AsyncWrongType TypeRep TypeRep -- ^ Expected type doesn't match stored in async value
+  | AsyncNotFound AsyncId -- ^ There is no async value with the id
+  deriving (Generic, Show)
+
+instance Exception MonadAsyncExcepion 
+
+instance NFData MonadAsyncExcepion where 
+  rnf e = case e of 
+    AsyncWrongType tr1 tr2 -> rnfTypeRep tr1 `deepseq` rnfTypeRep tr2
+    AsyncNotFound i -> i `deepseq` ()
 
 -- | Low level monadic API for module.
 --
 -- Note: does not require 'm' to be 'IO' monad.
-class Monad m => MonadAsync m where 
-  -- | stab method, temporary
-  asyncStab :: m ()
+class (MonadIO m, MonadThrow m) => MonadAsync m where 
+  -- | Start execution of 'IO' action concurrently and return its id
+  asyncEventM :: Typeable a => IO a -> m AsyncId
 
-instance {-# OVERLAPPING #-} Monad m => MonadAsync (AsyncT s m) where
-  asyncStab = return ()
+  -- | Start execution of 'IO' action concurrently and return its id
+  --
+  -- Note: forks thread within same OS thread.
+  asyncEventBoundM :: Typeable a => IO a -> m AsyncId
 
-instance {-# OVERLAPPABLE #-} (Monad (mt m), MonadAsync m, MonadTrans mt) => MonadAsync (mt m) where 
-  asyncStab = lift asyncStab
+  -- | Check state of concurrent value
+  --
+  -- Could also return 'MonadAsyncExcepion' as 'Event' payload.
+  asyncPollM :: AsyncId -> m (Event (Either SomeException a))
+
+  -- | Check state of concurrent value
+  --
+  -- Could throw 'MonadAsyncExcepion'.
+  asyncWaitM :: AsyncId -> m a
+
+instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m) where
+  asyncEventM = fail "unimplemented"
+  asyncEventBoundM = fail "unimplemented"
+  asyncPollM = fail "unimplemented"
+  asyncWaitM = fail "unimplemented"
+
+instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, MonadTrans mt) => MonadAsync (mt m) where 
+  asyncEventM = lift . asyncEventM
+  asyncEventBoundM = lift . asyncEventBoundM
+  asyncPollM = lift . asyncPollM
+  asyncWaitM = lift . asyncWaitM

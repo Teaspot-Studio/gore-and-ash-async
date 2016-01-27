@@ -16,5 +16,8 @@ library
   hs-source-dirs:     src
   exposed-modules:     
                       Game.GoreAndAsh.Async
+                      Game.GoreAndAsh.Async.API
+                      Game.GoreAndAsh.Async.Module
+                      Game.GoreAndAsh.Async.State
   default-language:   Haskell2010
   build-depends:      base >= 4.7 && < 5

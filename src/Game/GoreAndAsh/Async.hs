@@ -17,6 +17,18 @@ The module is NOT pure within first phase (see 'ModuleStack' docs), therefore cu
 Example of embedding:
 
 @
+-- Language extensions: DataKinds DeriveGeneric GeneralizedNewtypeDeriving MultiParamTypeClasses TypeFamilies
+import Control.DeepSeq
+import Control.Monad.Catch
+import Control.Monad.Fix 
+import Control.Monad.IO.Class
+import Control.Monad.Trans
+import Data.Typeable 
+import GHC.Generics (Generic)
+
+import Game.GoreAndAsh.Core
+import Game.GoreAndAsh.Async 
+
 -- | Application monad is monad stack build from given list of modules over base monad (IO or Identity)
 type AppStack = ModuleStack [AsyncT ... other modules ... ] IO
 newtype AppState = AppState (ModuleState AppStack)

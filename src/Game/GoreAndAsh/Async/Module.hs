@@ -20,6 +20,10 @@ import Control.Monad.State.Strict
 import Game.GoreAndAsh
 import Game.GoreAndAsh.Async.State
 
+import qualified Data.Foldable as F  
+import qualified Data.HashMap.Strict as H
+import qualified Data.Sequence as S 
+
 -- | Monad transformer of async core module.
 --
 -- [@s@] - State of next core module in modules chain;
@@ -43,10 +47,11 @@ newtype AsyncT s m a = AsyncT { runAsyncT :: StateT (AsyncState s) m a }
 
 instance GameModule m s => GameModule (AsyncT s m) (AsyncState s) where 
   type ModuleState (AsyncT s m) = AsyncState s
-  runModule (AsyncT m) s = do
-    ((a, s'), nextState) <- runModule (runStateT m s) (asyncNextState s)
-    s'' <- pollAsyncs . purgeAsyncs $! s' 
-    return (a, s'' {
+  runModule (AsyncT m) s1 = do
+    ((a, s2), nextState) <- runModule (runStateT m s1) (asyncNextState s1)
+    s3 <- pollAsyncs . purgeAsyncs $! s2 
+    s4 <- liftIO . execSyncs . purgeSyncs $! s3
+    return (a, s4 {
         asyncNextState = nextState 
       })
   
@@ -57,9 +62,9 @@ instance GameModule m s => GameModule (AsyncT s m) (AsyncState s) where
 -- | Polls all async values and update values
 pollAsyncs :: MonadIO m => AsyncState s -> m (AsyncState s)
 pollAsyncs s = do
-  mp <- mapM pollVal . asyncValues $! s 
+  mp <- mapM pollVal . asyncAValues $! s 
   return $! s {
-      asyncValues = mp
+      asyncAValues = mp
     }
   where
   pollVal ev = case ev of 
@@ -69,3 +74,14 @@ pollAsyncs s = do
         Nothing -> return ev 
         Just r -> return . Right $! r
     _ -> return ev
+
+-- | Execute all sync values
+execSyncs :: AsyncState s -> IO (AsyncState s)
+execSyncs s = do 
+  as <- mapM (uncurry execAction) . asyncScheduled $! s
+  return $! s {
+      asyncScheduled = S.empty 
+    , asyncSValues = F.foldl' (\acc (k, v) -> H.insert k v acc) H.empty as
+    }
+  where 
+    execAction i io = (fmap ((i,) . Right) io) `catchAll` (return . (i,) . Left)

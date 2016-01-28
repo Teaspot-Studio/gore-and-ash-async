@@ -32,7 +32,6 @@ data MonadAsyncExcepion =
     AsyncWrongType TypeRep TypeRep -- ^ Expected type doesn't match stored in async value
   | AsyncNotFound AsyncId -- ^ There is no async value with the id
   | SyncWrongType TypeRep TypeRep -- ^ Expected type doesn't match stored in sync value
-  | SyncNotFound SyncId -- ^ There is no sync value with the id
   deriving (Generic, Show)
 
 instance Exception MonadAsyncExcepion 
@@ -42,8 +41,7 @@ instance NFData MonadAsyncExcepion where
     AsyncWrongType tr1 tr2 -> rnfTypeRep tr1 `deepseq` rnfTypeRep tr2
     AsyncNotFound i -> i `deepseq` ()
     SyncWrongType tr1 tr2 -> rnfTypeRep tr1 `deepseq` rnfTypeRep tr2
-    SyncNotFound i -> i `deepseq` ()
-    
+
 -- | Low level monadic API for module.
 --
 -- Note: does not require 'm' to be 'IO' monad.
@@ -58,7 +56,7 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
 
   -- | Check state of concurrent value
   --
-  -- Could throw 'MonadAsyncExcepion'.
+  -- Could throw 'MonadAsyncExcepion', 'AsyncWrongType' and 'AsyncNotFound' constructors.
   asyncPollM :: Typeable a => AsyncId -> m (Event (Either SomeException a))
 
   -- | Stops given async execution
@@ -67,9 +65,13 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
   -- | Schedule action to be executed at the end of frame.
   --
   -- Use 'asyncSyncPollM' to get result at next frame.
+  --
+  -- Note: order of IO actions is preserved.
   asyncSyncActionM :: Typeable a => IO a -> m SyncId
 
   -- | Fires when given synchronious action is completed (at next frame after scheduling)
+  --
+  -- Could throw 'MonadAsyncExcepion', 'SyncWrongType' constructor.
   asyncSyncPollM :: Typeable a => SyncId -> m (Event (Either SomeException a))
 
   -- | Unshedule given action from execution
@@ -106,9 +108,20 @@ instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m
       Nothing -> return ()
       Just av -> liftIO $! cancel av 
 
-  asyncSyncActionM _ = fail "unimplemented"
-  asyncSyncPollM _ = fail "unimplemented"
-  asyncSyncCanceM _ = fail "unimplemented"
+  asyncSyncActionM = state . registerSyncValue
+
+  asyncSyncPollM :: forall a . Typeable a => SyncId -> AsyncT s m (Event (Either SomeException a))
+  asyncSyncPollM i = do 
+    mav <- getFinishedSyncValue i <$> AsyncT get 
+    case mav of 
+      Nothing -> return NoEvent 
+      Just ev -> case ev of 
+        Left e -> return . Event . Left $! e
+        Right da -> case fromDynamic da of 
+          Nothing -> throwM $! SyncWrongType (typeRep (Proxy :: Proxy a)) (dynTypeRep da)
+          Just a -> return . Event . Right $! a
+
+  asyncSyncCanceM i = state $! ((), ) <$> cancelSyncValue i
 
 instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, MonadTrans mt) => MonadAsync (mt m) where 
   asyncActionM = lift . asyncActionM

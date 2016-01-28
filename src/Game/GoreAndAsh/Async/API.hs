@@ -8,13 +8,20 @@ Stability   : experimental
 Portability : POSIX
 -}
 module Game.GoreAndAsh.Async.API(
+  -- * Monadic API
     MonadAsync(..)
   , MonadAsyncExcepion(..)
   -- * Arrow API
+  -- ** Not bounded async
   , asyncAction
   , asyncActionC
   , asyncActionEx
   , asyncActionExC
+  -- ** Bounded async
+  , asyncActionBound
+  , asyncActionBoundC
+  , asyncActionBoundEx
+  , asyncActionBoundExC
   ) where
 
 import Control.Concurrent.Async 
@@ -140,9 +147,11 @@ instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, 
 
 -- | Execute given 'IO' action concurrently. Event fires once when the action 
 -- is finished. Exceptions are rethrown into main thread.
-asyncAction :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event a)
-asyncAction io = mkGen $ \_ _ -> do 
-  i <- asyncActionM io 
+asyncActionG :: (MonadAsync m, Typeable a) => 
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> IO a -> GameWire m b (Event a)
+asyncActionG mkAsync io = mkGen $ \_ _ -> do 
+  i <- mkAsync io 
   return (Right NoEvent, go i)
   where
     go i = mkGen $ \_ _ -> do
@@ -157,10 +166,12 @@ asyncAction io = mkGen $ \_ _ -> do
 -- is finished. Exceptions are rethrown into main thread.
 --
 -- The concurrent action can be canceled by input event.
-asyncActionC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event a)
-asyncActionC io = mkGen $ \_ ce -> case ce of 
+asyncActionCG :: (MonadAsync m, Typeable a) =>
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> IO a -> GameWire m (Event b) (Event a)
+asyncActionCG mkAsync io = mkGen $ \_ ce -> case ce of 
   NoEvent -> do 
-    i <- asyncActionM io 
+    i <- mkAsync io 
     return (Right NoEvent, go i)
   Event _ -> return (Right NoEvent, never)
   where
@@ -180,9 +191,11 @@ asyncActionC io = mkGen $ \_ ce -> case ce of
 -- 
 -- Event fires once when the action is finished. Exceptions in the concurrent
 -- action are returned in event payload.
-asyncActionEx :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event (Either SomeException a))
-asyncActionEx io = mkGen $ \_ _ -> do 
-  i <- asyncActionM io 
+asyncActionExG :: (MonadAsync m, Typeable a) =>
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> IO a -> GameWire m b (Event (Either SomeException a))
+asyncActionExG mkAsync io = mkGen $ \_ _ -> do 
+  i <- mkAsync io 
   return (Right NoEvent, go i)
   where
     go i = mkGen $ \_ _ -> do
@@ -197,10 +210,12 @@ asyncActionEx io = mkGen $ \_ _ -> do
 -- concurrent action are returned in event payload.
 --
 -- The concurrent action can be canceled by input event.
-asyncActionExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
-asyncActionExC io = mkGen $ \_ ce -> case ce of 
+asyncActionExCG :: (MonadAsync m, Typeable a) =>
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> IO a -> GameWire m (Event b) (Event (Either SomeException a))
+asyncActionExCG mkAsync io = mkGen $ \_ ce -> case ce of 
   NoEvent -> do 
-    i <- asyncActionM io 
+    i <- mkAsync io 
     return (Right NoEvent, go i)
   Event _ -> return (Right NoEvent, never)
   where
@@ -213,3 +228,67 @@ asyncActionExC io = mkGen $ \_ ce -> case ce of
       Event _ -> do 
         asyncCancelM i 
         return (Right NoEvent, never)
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+asyncAction :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event a)
+asyncAction = asyncActionG asyncActionM
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+--
+-- The concurrent action can be canceled by input event.
+asyncActionC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event a)
+asyncActionC = asyncActionCG asyncActionM
+
+-- | Execute given 'IO' action concurrently. 
+-- 
+-- Event fires once when the action is finished. Exceptions in the concurrent
+-- action are returned in event payload.
+asyncActionEx :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event (Either SomeException a))
+asyncActionEx = asyncActionExG asyncActionM
+
+-- | Execute given 'IO' action concurrently. 
+--
+-- Event fires once when the action is finished. Exceptions in the 
+-- concurrent action are returned in event payload.
+--
+-- The concurrent action can be canceled by input event.
+asyncActionExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
+asyncActionExC = asyncActionExCG asyncActionM
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+--
+-- Note: forks thread within same OS thread.
+asyncActionBound :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event a)
+asyncActionBound = asyncActionG asyncActionBoundM
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+--
+-- The concurrent action can be canceled by input event.
+--
+-- Note: forks thread within same OS thread.
+asyncActionBoundC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event a)
+asyncActionBoundC = asyncActionCG asyncActionBoundM
+
+-- | Execute given 'IO' action concurrently. 
+-- 
+-- Event fires once when the action is finished. Exceptions in the concurrent
+-- action are returned in event payload.
+--
+-- Note: forks thread within same OS thread.
+asyncActionBoundEx :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event (Either SomeException a))
+asyncActionBoundEx = asyncActionExG asyncActionBoundM
+
+-- | Execute given 'IO' action concurrently. 
+--
+-- Event fires once when the action is finished. Exceptions in the 
+-- concurrent action are returned in event payload.
+--
+-- The concurrent action can be canceled by input event.
+--
+-- Note: forks thread within same OS thread.`
+asyncActionBoundExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
+asyncActionBoundExC = asyncActionExCG asyncActionBoundM

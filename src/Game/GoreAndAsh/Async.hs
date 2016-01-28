@@ -48,6 +48,17 @@ module Game.GoreAndAsh.Async(
   , AsyncT 
   , AsyncId
   , MonadAsync(..)
+  -- * Arrow API
+  -- ** Not bounded async
+  , asyncAction
+  , asyncActionC
+  , asyncActionEx
+  , asyncActionExC
+  -- ** Bounded async
+  , asyncActionBound
+  , asyncActionBoundC
+  , asyncActionBoundEx
+  , asyncActionBoundExC
   ) where
 
 -- for docs

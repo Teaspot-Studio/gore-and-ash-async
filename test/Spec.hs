@@ -15,6 +15,7 @@ import Control.Wire
 import Data.Either
 import Game.GoreAndAsh.Async 
 import Game.GoreAndAsh.Core
+import Prelude hiding (id, (.))
 
 -- | Application monad is monad stack build from given list of modules over base monad (IO or Identity)
 type AppStack = ModuleStack [AsyncT, AsyncT] IO
@@ -49,14 +50,17 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       testGroup "async actions" [
         testCase "simple" asyncSimple
       , testCase "except" asyncExcept
+      , testCase "except no catch" asyncExcept'
       ]
     , testGroup "async bound actions" [
         testCase "simple" asyncBoundSimple
       , testCase "except" asyncBoundExcept
+      , testCase "except no catch" asyncBoundExcept'
       ]
     , testGroup "async sync actions" [
         testCase "simple" asyncSyncSimple
       , testCase "except" asyncSyncExcept
+      , testCase "except no catch" asyncSyncExcept'
       ]
     ] mempty
 
@@ -94,6 +98,16 @@ asyncExcept = do
       e <- asyncActionEx (throwM TestException) -< ()
       rSwitch (pure $ Right False) -< ((), pure <$> e)
 
+asyncExcept' :: Assertion
+asyncExcept' = do 
+  ma <- (fmap Right $ runWire 100 w) `catchAll` (return . Left)
+  assertBool "returned is exception" (isLeft ma) 
+  where 
+    w :: AppWire () Bool
+    w = proc _ -> do 
+      e <- asyncAction (throwM TestException) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)
+
 asyncBoundSimple :: Assertion
 asyncBoundSimple = do 
   ma <- runWire 100 w 
@@ -117,6 +131,16 @@ asyncBoundExcept = do
       e <- asyncActionBoundEx (throwM TestException) -< ()
       rSwitch (pure $ Right False) -< ((), pure <$> e)
 
+asyncBoundExcept' :: Assertion
+asyncBoundExcept' = do 
+  ma <- (fmap Right $ runWire 100 w) `catchAll` (return . Left)
+  assertBool "returned is exception" (isLeft ma) 
+  where 
+    w :: AppWire () Bool
+    w = proc _ -> do 
+      e <- asyncActionBound (throwM TestException) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)
+
 asyncSyncSimple :: Assertion
 asyncSyncSimple = do 
   ma <- runWire 100 w 
@@ -139,3 +163,13 @@ asyncSyncExcept = do
     w = proc _ -> do 
       e <- asyncSyncActionEx (throwM TestException) -< ()
       rSwitch (pure $ Right False) -< ((), pure <$> e)
+
+asyncSyncExcept' :: Assertion
+asyncSyncExcept' = do 
+  ma <- (fmap Right $ runWire 100 w) `catchAll` (return . Left)
+  assertBool "returned is exception" (isLeft ma) 
+  where 
+    w :: AppWire () Bool
+    w = proc _ -> do 
+      e <- asyncSyncAction (throwM TestException) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)

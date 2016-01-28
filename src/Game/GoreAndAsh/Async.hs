@@ -22,7 +22,6 @@ import Control.DeepSeq
 import Control.Monad.Catch
 import Control.Monad.Fix 
 import Control.Monad.IO.Class
-import Control.Monad.Trans
 import Data.Typeable 
 import GHC.Generics (Generic)
 

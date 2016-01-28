@@ -8,10 +8,10 @@ import Control.DeepSeq
 import Control.Monad.Catch
 import Control.Monad.Fix 
 import Control.Monad.IO.Class
-import Control.Monad.Trans
 import Data.Typeable 
 import GHC.Generics (Generic)
 
+import Control.Wire
 import Game.GoreAndAsh.Core
 import Game.GoreAndAsh.Async 
 
@@ -39,11 +39,33 @@ instance GameModule AppMonad AppState where
 type AppWire a b = GameWire AppMonad a b
 
 main :: IO ()
-main = defaultMainWithOpts [
-    testGroup "async actions" [
-     ]
-  , testGroup "async bound actions" [
-     ]
-  , testGroup "async sync actions" [
-     ]
-  ] mempty
+main = withModule (Proxy :: Proxy AppMonad) $ do
+  defaultMainWithOpts [
+      testGroup "async actions" [
+        testCase "simple" asyncSimple
+      ]
+    , testGroup "async bound actions" [
+      ]
+    , testGroup "async sync actions" [
+      ]
+    ] mempty
+
+-- | Runs wire n times and return it result
+runWire :: Int -> AppWire () a -> IO (Maybe a)
+runWire n w = do 
+  gs <- newGameState w
+  go gs n Nothing
+  where 
+  go gs i ma = if i <= 0 then return ma
+    else do 
+      (ma', gs') <- stepGame gs (return ())
+      go gs' (i-1) ma'
+
+asyncSimple :: Assertion
+asyncSimple = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just True) ma
+  where
+    w = proc _ -> do 
+      e <- asyncAction (return True) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)

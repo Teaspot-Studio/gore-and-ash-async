@@ -11,7 +11,9 @@ import Control.Monad.IO.Class
 import Data.Typeable 
 import GHC.Generics (Generic)
 
+import Control.Concurrent.MVar
 import Control.Wire
+import Control.Wire.Unsafe.Event
 import Data.Either
 import Game.GoreAndAsh.Async 
 import Game.GoreAndAsh.Core
@@ -51,16 +53,21 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
         testCase "simple" asyncSimple
       , testCase "except" asyncExcept
       , testCase "except no catch" asyncExcept'
+      , testCase "cancel" asyncCancel
+      , testCase "cancel delayed" asyncCancelDelayed
       ]
     , testGroup "async bound actions" [
         testCase "simple" asyncBoundSimple
       , testCase "except" asyncBoundExcept
       , testCase "except no catch" asyncBoundExcept'
+      , testCase "cancel" asyncCancelBound
+      , testCase "cancel delayed" asyncCancelBoundDelayed
       ]
     , testGroup "async sync actions" [
         testCase "simple" asyncSyncSimple
       , testCase "except" asyncSyncExcept
       , testCase "except no catch" asyncSyncExcept'
+      , testCase "cancel" asyncCancelSync
       ]
     ] mempty
 
@@ -97,6 +104,35 @@ asyncExcept = do
     w = proc _ -> do 
       e <- asyncActionEx (throwM TestException) -< ()
       rSwitch (pure $ Right False) -< ((), pure <$> e)
+
+asyncCancel :: Assertion
+asyncCancel = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just False) ma
+  where
+    w = proc _ -> do 
+      ce <- now -< ()
+      e <- asyncActionC (return True) -< ce
+      rSwitch (pure False) -< ((), pure <$> e)
+
+asyncCancelDelayed :: Assertion
+asyncCancelDelayed = do 
+  ma <- runWire 100 w0 
+  assertEqual "wire switch" (Just False) ma
+  where
+    w0 = switch $ proc _ -> do 
+      evar <- liftGameMonadEvent1 (const $ liftIO newEmptyMVar) . now -< ()
+      returnA -< (False, w <$> evar)
+
+    w var = proc _ -> do 
+      ce <- delay NoEvent . now -< ()
+      e <- asyncActionC (io var) -< ce
+      liftGameMonadEvent1 (const . liftIO $ putMVar var ()) -< ce
+      rSwitch (pure False) -< ((), pure <$> e)
+
+    io var = do 
+      _ <- readMVar var
+      return True
 
 asyncExcept' :: Assertion
 asyncExcept' = do 
@@ -141,6 +177,35 @@ asyncBoundExcept' = do
       e <- asyncActionBound (throwM TestException) -< ()
       rSwitch (pure False) -< ((), pure <$> e)
 
+asyncCancelBound :: Assertion
+asyncCancelBound = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just False) ma
+  where
+    w = proc _ -> do 
+      ce <- now -< ()
+      e <- asyncActionBoundC (return True) -< ce
+      rSwitch (pure False) -< ((), pure <$> e)
+
+asyncCancelBoundDelayed :: Assertion
+asyncCancelBoundDelayed = do 
+  ma <- runWire 100 w0 
+  assertEqual "wire switch" (Just False) ma
+  where
+    w0 = switch $ proc _ -> do 
+      evar <- liftGameMonadEvent1 (const $ liftIO newEmptyMVar) . now -< ()
+      returnA -< (False, w <$> evar)
+
+    w var = proc _ -> do 
+      ce <- delay NoEvent . now -< ()
+      e <- asyncActionBoundC (io var) -< ce
+      liftGameMonadEvent1 (const . liftIO $ putMVar var ()) -< ce
+      rSwitch (pure False) -< ((), pure <$> e)
+
+    io var = do 
+      _ <- readMVar var
+      return True
+
 asyncSyncSimple :: Assertion
 asyncSyncSimple = do 
   ma <- runWire 100 w 
@@ -172,4 +237,14 @@ asyncSyncExcept' = do
     w :: AppWire () Bool
     w = proc _ -> do 
       e <- asyncSyncAction (throwM TestException) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)
+
+asyncCancelSync :: Assertion
+asyncCancelSync = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just False) ma
+  where
+    w = proc _ -> do 
+      ce <- now -< ()
+      e <- asyncSyncActionC (return True) -< ce
       rSwitch (pure False) -< ((), pure <$> e)

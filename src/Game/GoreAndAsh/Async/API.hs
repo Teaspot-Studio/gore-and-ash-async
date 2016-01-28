@@ -17,16 +17,22 @@ module Game.GoreAndAsh.Async.API(
   , asyncActionC
   , asyncActionEx
   , asyncActionExC
+  , asyncActionFabric
+  , asyncActionFabricEx
   -- ** Bounded async
   , asyncActionBound
   , asyncActionBoundC
   , asyncActionBoundEx
   , asyncActionBoundExC
+  , asyncActionBoundFabric
+  , asyncActionBoundFabricEx
   -- ** Sync actions
   , asyncSyncAction
   , asyncSyncActionEx
   , asyncSyncActionC
   , asyncSyncActionExC
+  , asyncSyncActionFabric 
+  , asyncSyncActionFabricEx
   ) where
 
 import Control.Concurrent.Async 
@@ -44,6 +50,11 @@ import Prelude hiding (id, (.))
 import Game.GoreAndAsh.Core
 import Game.GoreAndAsh.Async.Module 
 import Game.GoreAndAsh.Async.State
+
+import Data.Sequence (Seq, (|>), (><))
+import qualified Data.Sequence as S 
+
+import qualified Data.Foldable as F 
 
 -- | Exception of the async monadic API
 data MonadAsyncExcepion =
@@ -369,3 +380,157 @@ asyncSyncActionExC io = mkGen $ \_ ce -> case ce of
           Nothing -> return (Right NoEvent, never) -- One has canceled the action
           Just ea -> return (Right $ Event ea, never)
       Event _ -> return (Right NoEvent, never)
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are rethrown into main thread.
+asyncActionFabricG :: forall m a . (MonadAsync m, Typeable a) => 
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncActionFabricG mkAsync = go S.empty
+  where 
+  go :: Seq AsyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
+  go is = mkGen $ \_ eios -> do 
+    -- spawn new values
+    newIs <- case eios of 
+      NoEvent -> return S.empty 
+      Event ios -> mapM mkAsync ios
+
+    -- poll current values
+    rs <- mapM asyncPollM is
+    (as, is') <- F.foldlM procValue (S.empty, S.empty) $ rs `S.zip` is
+
+    -- return values, produce new ids
+    let e = if S.null as then NoEvent else Event as
+    let is'' = is' >< newIs
+    return $ is'' `deepseq` e `seq` (Right e, go is'')
+
+  procValue :: (Seq a, Seq AsyncId) -> (Maybe (Either SomeException a), AsyncId) -> GameMonadT m (Seq a, Seq AsyncId)
+  procValue (as, is) (mr, i) = case mr of
+      Nothing -> return (as, is |> i)
+      Just ea -> case ea of 
+        Left e -> throwM e 
+        Right a -> return (as |> a, is)
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are returned in event payload.
+asyncActionFabricExG :: forall m a . (MonadAsync m, Typeable a) => 
+  (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
+  -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncActionFabricExG mkAsync = go S.empty
+  where 
+  go :: Seq AsyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+  go is = mkGen $ \_ eios -> do 
+    -- spawn new values
+    newIs <- case eios of 
+      NoEvent -> return S.empty 
+      Event ios -> mapM mkAsync ios
+
+    -- poll current values
+    rs <- mapM asyncPollM is
+    (as, is') <- F.foldlM procValue (S.empty, S.empty) $ rs `S.zip` is
+
+    -- return values, produce new ids
+    let e = if S.null as then NoEvent else Event as
+    let is'' = is' >< newIs
+    return $ is'' `deepseq` e `seq` (Right e, go is'')
+
+  procValue :: (Seq (Either SomeException a), Seq AsyncId) -> (Maybe (Either SomeException a), AsyncId) -> GameMonadT m (Seq (Either SomeException a), Seq AsyncId)
+  procValue (as, is) (mr, i) = case mr of
+      Nothing -> return (as, is |> i)
+      Just ea -> return (as |> ea, is)
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are rethrown into main thread.
+asyncActionFabric :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncActionFabric = asyncActionFabricG asyncActionM
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are returned in event payload.
+asyncActionFabricEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncActionFabricEx = asyncActionFabricExG asyncActionM
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are rethrown into main thread.
+--
+-- Note: forks thread within same OS thread.
+asyncActionBoundFabric :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncActionBoundFabric = asyncActionFabricG asyncActionBoundM
+
+-- | Wire that executes incoming 'IO' actions concurrently and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are returned in event payload.
+--
+-- Note: forks thread within same OS thread.
+asyncActionBoundFabricEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncActionBoundFabricEx = asyncActionFabricExG asyncActionM
+
+-- | Wire that executes incoming 'IO' actions at end of current frame and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are rethrown into main thread.
+asyncSyncActionFabric :: forall m a . (MonadAsync m, Typeable a)
+  => GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncSyncActionFabric = go S.empty
+  where 
+  go :: Seq SyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
+  go is = mkGen $ \_ eios -> do 
+    -- spawn new values
+    newIs <- case eios of 
+      NoEvent -> return S.empty 
+      Event ios -> mapM asyncSyncActionM ios
+
+    -- poll current values
+    rs <- mapM asyncSyncPollM is
+    (as, is') <- F.foldlM procValue (S.empty, S.empty) $ rs `S.zip` is
+
+    -- return values, produce new ids
+    let e = if S.null as then NoEvent else Event as
+    let is'' = is' >< newIs
+    return $ is'' `deepseq` e `seq` (Right e, go is'')
+
+  procValue :: (Seq a, Seq SyncId) -> (Maybe (Either SomeException a), SyncId) -> GameMonadT m (Seq a, Seq SyncId)
+  procValue (as, is) (mr, i) = case mr of
+      Nothing -> return (as, is |> i)
+      Just ea -> case ea of 
+        Left e -> throwM e 
+        Right a -> return (as |> a, is)
+
+-- | Wire that executes incoming 'IO' actions at end of current frame and then produces
+-- events with results once for each action.
+-- 
+-- Exceptions are rethrown into main thread.
+asyncSyncActionFabricEx :: forall m a . (MonadAsync m, Typeable a)
+  => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncSyncActionFabricEx = go S.empty
+  where 
+  go :: Seq SyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+  go is = mkGen $ \_ eios -> do 
+    -- spawn new values
+    newIs <- case eios of 
+      NoEvent -> return S.empty 
+      Event ios -> mapM asyncSyncActionM ios
+
+    -- poll current values
+    rs <- mapM asyncSyncPollM is
+    (as, is') <- F.foldlM procValue (S.empty, S.empty) $ rs `S.zip` is
+
+    -- return values, produce new ids
+    let e = if S.null as then NoEvent else Event as
+    let is'' = is' >< newIs
+    return $ is'' `deepseq` e `seq` (Right e, go is'')
+
+  procValue :: (Seq (Either SomeException a), Seq SyncId) -> (Maybe (Either SomeException a), SyncId) -> GameMonadT m (Seq (Either SomeException a), Seq SyncId)
+  procValue (as, is) (mr, i) = case mr of
+      Nothing -> return (as, is |> i)
+      Just ea -> return (as |> ea, is)

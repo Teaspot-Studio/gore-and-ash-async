@@ -59,6 +59,11 @@ module Game.GoreAndAsh.Async(
   , asyncActionBoundC
   , asyncActionBoundEx
   , asyncActionBoundExC
+  -- ** Sync actions
+  , asyncSyncAction
+  , asyncSyncActionEx
+  , asyncSyncActionC
+  , asyncSyncActionExC
   ) where
 
 -- for docs

@@ -22,6 +22,11 @@ module Game.GoreAndAsh.Async.API(
   , asyncActionBoundC
   , asyncActionBoundEx
   , asyncActionBoundExC
+  -- ** Sync actions
+  , asyncSyncAction
+  , asyncSyncActionEx
+  , asyncSyncActionC
+  , asyncSyncActionExC
   ) where
 
 import Control.Concurrent.Async 
@@ -292,3 +297,75 @@ asyncActionBoundEx = asyncActionExG asyncActionBoundM
 -- Note: forks thread within same OS thread.`
 asyncActionBoundExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
 asyncActionBoundExC = asyncActionExCG asyncActionBoundM
+
+-- | Execute given 'IO' action at end of current frame. Event fires once at next frame.
+-- 
+-- Exceptions are rethrown into main thread.
+asyncSyncAction :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event a)
+asyncSyncAction io = mkGen $ \_ _ -> do 
+  i <- asyncSyncActionM io 
+  return (Right NoEvent, go i)
+  where
+    go i = mkGen $ \_ _ -> do
+      mr <- asyncSyncPollM i 
+      case mr of 
+        Nothing -> return (Right NoEvent, never) -- One has canceled the action
+        Just ea -> case ea of 
+          Left e -> throwM e 
+          Right a -> return (Right $ Event a, never)
+
+-- | Execute given 'IO' action at end of current frame. Event fires once at next frame.
+-- 
+-- Exceptions are returned in event payload.
+asyncSyncActionEx :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event (Either SomeException a))
+asyncSyncActionEx io = mkGen $ \_ _ -> do 
+  i <- asyncSyncActionM io 
+  return (Right NoEvent, go i)
+  where
+    go i = mkGen $ \_ _ -> do
+      mr <- asyncSyncPollM i 
+      case mr of 
+        Nothing -> return (Right NoEvent, never) -- One has canceled the action
+        Just ea -> return (Right $ Event ea, never)
+
+-- | Execute given 'IO' action at end of current frame. Event fires once at next frame.
+-- 
+-- Exceptions are rethrown into main thread.
+--
+-- Action can be canceled with input event, although you have only the frame to do this.
+asyncSyncActionC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event a)
+asyncSyncActionC io = mkGen $ \_ ce -> case ce of 
+  NoEvent -> do 
+    i <- asyncSyncActionM io 
+    return (Right NoEvent, go i)
+  Event _ -> return (Right NoEvent, never)
+  where
+    go i = mkGen $ \_ ce -> case ce of 
+      NoEvent -> do
+        mr <- asyncSyncPollM i 
+        case mr of 
+          Nothing -> return (Right NoEvent, never) -- One has canceled the action
+          Just ea -> case ea of 
+            Left e -> throwM e 
+            Right a -> return (Right $ Event a, never)
+      Event _ -> return (Right NoEvent, never)
+
+-- | Execute given 'IO' action at end of current frame. Event fires once at next frame.
+-- 
+-- Exceptions are rethrown into main thread.
+--
+-- Action can be canceled with input event, although you have only the frame to do this.
+asyncSyncActionExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
+asyncSyncActionExC io = mkGen $ \_ ce -> case ce of 
+  NoEvent -> do 
+    i <- asyncSyncActionM io 
+    return (Right NoEvent, go i)
+  Event _ -> return (Right NoEvent, never)
+  where
+    go i = mkGen $ \_ ce -> case ce of 
+      NoEvent -> do
+        mr <- asyncSyncPollM i 
+        case mr of 
+          Nothing -> return (Right NoEvent, never) -- One has canceled the action
+          Just ea -> return (Right $ Event ea, never)
+      Event _ -> return (Right NoEvent, never)

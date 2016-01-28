@@ -10,6 +10,11 @@ Portability : POSIX
 module Game.GoreAndAsh.Async.API(
     MonadAsync(..)
   , MonadAsyncExcepion(..)
+  -- * Arrow API
+  , asyncAction
+  , asyncActionC
+  , asyncActionEx
+  , asyncActionExC
   ) where
 
 import Control.Concurrent.Async 
@@ -24,6 +29,7 @@ import Data.Dynamic
 import GHC.Generics (Generic)
 import Prelude hiding (id, (.))
 
+import Game.GoreAndAsh.Core
 import Game.GoreAndAsh.Async.Module 
 import Game.GoreAndAsh.Async.State
 
@@ -57,7 +63,7 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
   -- | Check state of concurrent value
   --
   -- Could throw 'MonadAsyncExcepion', 'AsyncWrongType' and 'AsyncNotFound' constructors.
-  asyncPollM :: Typeable a => AsyncId -> m (Event (Either SomeException a))
+  asyncPollM :: Typeable a => AsyncId -> m (Maybe (Either SomeException a))
 
   -- | Stops given async execution
   asyncCancelM :: AsyncId -> m ()
@@ -72,7 +78,7 @@ class (MonadIO m, MonadThrow m) => MonadAsync m where
   -- | Fires when given synchronious action is completed (at next frame after scheduling)
   --
   -- Could throw 'MonadAsyncExcepion', 'SyncWrongType' constructor.
-  asyncSyncPollM :: Typeable a => SyncId -> m (Event (Either SomeException a))
+  asyncSyncPollM :: Typeable a => SyncId -> m (Maybe (Either SomeException a))
 
   -- | Unshedule given action from execution
   --
@@ -89,18 +95,18 @@ instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m
     av <- liftIO . asyncBound $! io 
     state $! registerAsyncValue av
 
-  asyncPollM :: forall a . Typeable a => AsyncId -> AsyncT s m (Event (Either SomeException a))
+  asyncPollM :: forall a . Typeable a => AsyncId -> AsyncT s m (Maybe (Either SomeException a))
   asyncPollM i = do 
     mav <- getFinishedAsyncValue i <$> AsyncT get 
     case mav of 
       Nothing -> throwM . AsyncNotFound $! i 
       Just av -> case av of 
-        Nothing -> return NoEvent 
+        Nothing -> return Nothing 
         Just ev -> case ev of 
-          Left e -> return . Event . Left $! e
+          Left e -> return . Just . Left $! e
           Right da -> case fromDynamic da of 
             Nothing -> throwM $! AsyncWrongType (typeRep (Proxy :: Proxy a)) (dynTypeRep da)
-            Just a -> return . Event . Right $! a
+            Just a -> return . Just . Right $! a
 
   asyncCancelM i = do 
     mav <- state $! cancelAsyncValue i
@@ -110,16 +116,16 @@ instance {-# OVERLAPPING #-} (MonadIO m, MonadThrow m) => MonadAsync (AsyncT s m
 
   asyncSyncActionM = state . registerSyncValue
 
-  asyncSyncPollM :: forall a . Typeable a => SyncId -> AsyncT s m (Event (Either SomeException a))
+  asyncSyncPollM :: forall a . Typeable a => SyncId -> AsyncT s m (Maybe (Either SomeException a))
   asyncSyncPollM i = do 
     mav <- getFinishedSyncValue i <$> AsyncT get 
     case mav of 
-      Nothing -> return NoEvent 
+      Nothing -> return Nothing 
       Just ev -> case ev of 
-        Left e -> return . Event . Left $! e
+        Left e -> return . Just . Left $! e
         Right da -> case fromDynamic da of 
           Nothing -> throwM $! SyncWrongType (typeRep (Proxy :: Proxy a)) (dynTypeRep da)
-          Just a -> return . Event . Right $! a
+          Just a -> return . Just . Right $! a
 
   asyncSyncCanceM i = state $! ((), ) <$> cancelSyncValue i
 
@@ -131,3 +137,79 @@ instance {-# OVERLAPPABLE #-} (MonadIO (mt m), MonadThrow (mt m), MonadAsync m, 
   asyncSyncActionM = lift . asyncSyncActionM
   asyncSyncPollM = lift . asyncSyncPollM
   asyncSyncCanceM = lift . asyncSyncCanceM
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+asyncAction :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event a)
+asyncAction io = mkGen $ \_ _ -> do 
+  i <- asyncActionM io 
+  return (Right NoEvent, go i)
+  where
+    go i = mkGen $ \_ _ -> do
+      mr <- asyncPollM i 
+      case mr of 
+        Nothing -> return (Right NoEvent, go i)
+        Just ea -> case ea of 
+          Left e -> throwM e 
+          Right a -> return (Right $ Event a, never)
+
+-- | Execute given 'IO' action concurrently. Event fires once when the action 
+-- is finished. Exceptions are rethrown into main thread.
+--
+-- The concurrent action can be canceled by input event.
+asyncActionC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event a)
+asyncActionC io = mkGen $ \_ ce -> case ce of 
+  NoEvent -> do 
+    i <- asyncActionM io 
+    return (Right NoEvent, go i)
+  Event _ -> return (Right NoEvent, never)
+  where
+    go i = mkGen $ \_ ce -> case ce of  
+      NoEvent -> do
+        mr <- asyncPollM i 
+        case mr of 
+          Nothing -> return (Right NoEvent, go i)
+          Just ea -> case ea of 
+            Left e -> throwM e 
+            Right a -> return (Right $ Event a, never)
+      Event _ -> do 
+        asyncCancelM i 
+        return (Right NoEvent, never)
+
+-- | Execute given 'IO' action concurrently. 
+-- 
+-- Event fires once when the action is finished. Exceptions in the concurrent
+-- action are returned in event payload.
+asyncActionEx :: (MonadAsync m, Typeable a) => IO a -> GameWire m b (Event (Either SomeException a))
+asyncActionEx io = mkGen $ \_ _ -> do 
+  i <- asyncActionM io 
+  return (Right NoEvent, go i)
+  where
+    go i = mkGen $ \_ _ -> do
+      mr <- asyncPollM i 
+      case mr of 
+        Nothing -> return (Right NoEvent, go i)
+        Just ea -> return (Right $ Event ea, never)
+
+-- | Execute given 'IO' action concurrently. 
+--
+-- Event fires once when the action is finished. Exceptions in the 
+-- concurrent action are returned in event payload.
+--
+-- The concurrent action can be canceled by input event.
+asyncActionExC :: (MonadAsync m, Typeable a) => IO a -> GameWire m (Event b) (Event (Either SomeException a))
+asyncActionExC io = mkGen $ \_ ce -> case ce of 
+  NoEvent -> do 
+    i <- asyncActionM io 
+    return (Right NoEvent, go i)
+  Event _ -> return (Right NoEvent, never)
+  where
+    go i = mkGen $ \_ ce -> case ce of  
+      NoEvent -> do
+        mr <- asyncPollM i 
+        case mr of 
+          Nothing -> return (Right NoEvent, go i)
+          Just ea -> return (Right $ Event ea, never)
+      Event _ -> do 
+        asyncCancelM i 
+        return (Right NoEvent, never)

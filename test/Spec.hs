@@ -45,8 +45,10 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
         testCase "simple" asyncSimple
       ]
     , testGroup "async bound actions" [
+        testCase "simple" asyncBoundSimple
       ]
     , testGroup "async sync actions" [
+        testCase "simple" asyncSyncSimple
       ]
     ] mempty
 
@@ -68,4 +70,22 @@ asyncSimple = do
   where
     w = proc _ -> do 
       e <- asyncAction (return True) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)
+
+asyncBoundSimple :: Assertion
+asyncBoundSimple = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just True) ma
+  where
+    w = proc _ -> do 
+      e <- asyncActionBound (return True) -< ()
+      rSwitch (pure False) -< ((), pure <$> e)
+
+asyncSyncSimple :: Assertion
+asyncSyncSimple = do 
+  ma <- runWire 100 w 
+  assertEqual "wire switch" (Just True) ma
+  where
+    w = proc _ -> do 
+      e <- asyncSyncAction (return True) -< ()
       rSwitch (pure False) -< ((), pure <$> e)

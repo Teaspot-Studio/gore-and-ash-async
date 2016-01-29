@@ -58,6 +58,8 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       , testCase "cancel" asyncCancel
       , testCase "cancel delayed" asyncCancelDelayed
       , testCase "factory" asyncFactory
+      , testCase "factory ex normal" asyncFactoryEx
+      , testCase "factory ex except" asyncFactoryEx'
       ]
     , testGroup "async bound actions" [
         testCase "simple" asyncBoundSimple
@@ -66,6 +68,8 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       , testCase "cancel" asyncCancelBound
       , testCase "cancel delayed" asyncCancelBoundDelayed
       , testCase "factory" asyncFactoryBound
+      , testCase "factory ex normal" asyncFactoryBoundEx
+      , testCase "factory ex except" asyncFactoryBoundEx'
       ]
     , testGroup "async sync actions" [
         testCase "simple" asyncSyncSimple
@@ -73,6 +77,8 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       , testCase "except no catch" asyncSyncExcept'
       , testCase "cancel" asyncCancelSync
       , testCase "factory" asyncFactorySync
+      , testCase "factory ex normal" asyncSyncFactoryEx
+      , testCase "factory ex except" asyncSyncFactoryEx'
       ]
     ] mempty
 
@@ -154,6 +160,50 @@ asyncFactory = do
     where
     go k 0 = never
     go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
+seqRights :: S.Seq (Either a b) -> S.Seq b
+seqRights = fmap fromRight . S.filter isRight
+  where 
+  fromRight (Left _) = error "seqRights"
+  fromRight (Right a) = a 
+
+asyncFactoryEx :: Assertion 
+asyncFactoryEx = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
+asyncFactoryEx' :: Assertion 
+asyncFactoryEx' = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 0) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (throwM TestException), go k (n-1))
 
 asyncExcept' :: Assertion
 asyncExcept' = do 
@@ -243,6 +293,44 @@ asyncFactoryBound = do
     go k 0 = never
     go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
 
+asyncFactoryBoundEx :: Assertion 
+asyncFactoryBoundEx = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionBoundFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
+asyncFactoryBoundEx' :: Assertion 
+asyncFactoryBoundEx' = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 0) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionBoundFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (throwM TestException), go k (n-1))
+
 asyncSyncSimple :: Assertion
 asyncSyncSimple = do 
   ma <- runWire 100 w 
@@ -301,3 +389,41 @@ asyncFactorySync = do
     where
     go k 0 = never
     go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
+asyncSyncFactoryEx :: Assertion 
+asyncSyncFactoryEx = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncSyncActionFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
+asyncSyncFactoryEx' :: Assertion 
+asyncSyncFactoryEx' = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 0) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncSyncActionFactoryEx -< eio
+    hold . accumE foldResult 0 -< eas 
+
+  foldResult :: Int -> S.Seq (Either SomeException Int) -> Int
+  foldResult i eas = i + sum (seqRights eas)
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (throwM TestException), go k (n-1))

@@ -65,22 +65,22 @@ module Game.GoreAndAsh.Async(
   , asyncActionC
   , asyncActionEx
   , asyncActionExC
-  , asyncActionFabric
-  , asyncActionFabricEx
+  , asyncActionFactory
+  , asyncActionFactoryEx
   -- ** Bounded async
   , asyncActionBound
   , asyncActionBoundC
   , asyncActionBoundEx
   , asyncActionBoundExC
-  , asyncActionBoundFabric
-  , asyncActionBoundFabricEx
+  , asyncActionBoundFactory
+  , asyncActionBoundFactoryEx
   -- ** Sync actions
   , asyncSyncAction
   , asyncSyncActionEx
   , asyncSyncActionC
   , asyncSyncActionExC
-  , asyncSyncActionFabric 
-  , asyncSyncActionFabricEx
+  , asyncSyncActionFactory 
+  , asyncSyncActionFactoryEx
   ) where
 
 -- for docs

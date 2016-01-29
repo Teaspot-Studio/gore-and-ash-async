@@ -17,22 +17,22 @@ module Game.GoreAndAsh.Async.API(
   , asyncActionC
   , asyncActionEx
   , asyncActionExC
-  , asyncActionFabric
-  , asyncActionFabricEx
+  , asyncActionFactory
+  , asyncActionFactoryEx
   -- ** Bounded async
   , asyncActionBound
   , asyncActionBoundC
   , asyncActionBoundEx
   , asyncActionBoundExC
-  , asyncActionBoundFabric
-  , asyncActionBoundFabricEx
+  , asyncActionBoundFactory
+  , asyncActionBoundFactoryEx
   -- ** Sync actions
   , asyncSyncAction
   , asyncSyncActionEx
   , asyncSyncActionC
   , asyncSyncActionExC
-  , asyncSyncActionFabric 
-  , asyncSyncActionFabricEx
+  , asyncSyncActionFactory 
+  , asyncSyncActionFactoryEx
   ) where
 
 import Control.Concurrent.Async 
@@ -385,10 +385,10 @@ asyncSyncActionExC io = mkGen $ \_ ce -> case ce of
 -- events with results once for each action.
 -- 
 -- Exceptions are rethrown into main thread.
-asyncActionFabricG :: forall m a . (MonadAsync m, Typeable a) => 
+asyncActionFactoryG :: forall m a . (MonadAsync m, Typeable a) => 
   (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
   -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
-asyncActionFabricG mkAsync = go S.empty
+asyncActionFactoryG mkAsync = go S.empty
   where 
   go :: Seq AsyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
   go is = mkGen $ \_ eios -> do 
@@ -417,10 +417,10 @@ asyncActionFabricG mkAsync = go S.empty
 -- events with results once for each action.
 -- 
 -- Exceptions are returned in event payload.
-asyncActionFabricExG :: forall m a . (MonadAsync m, Typeable a) => 
+asyncActionFactoryExG :: forall m a . (MonadAsync m, Typeable a) => 
   (IO a -> GameMonadT m AsyncId) -- ^ Maker of async value
   -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
-asyncActionFabricExG mkAsync = go S.empty
+asyncActionFactoryExG mkAsync = go S.empty
   where 
   go :: Seq AsyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
   go is = mkGen $ \_ eios -> do 
@@ -447,15 +447,15 @@ asyncActionFabricExG mkAsync = go S.empty
 -- events with results once for each action.
 -- 
 -- Exceptions are rethrown into main thread.
-asyncActionFabric :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
-asyncActionFabric = asyncActionFabricG asyncActionM
+asyncActionFactory :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncActionFactory = asyncActionFactoryG asyncActionM
 
 -- | Wire that executes incoming 'IO' actions concurrently and then produces
 -- events with results once for each action.
 -- 
 -- Exceptions are returned in event payload.
-asyncActionFabricEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
-asyncActionFabricEx = asyncActionFabricExG asyncActionM
+asyncActionFactoryEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncActionFactoryEx = asyncActionFactoryExG asyncActionM
 
 -- | Wire that executes incoming 'IO' actions concurrently and then produces
 -- events with results once for each action.
@@ -463,8 +463,8 @@ asyncActionFabricEx = asyncActionFabricExG asyncActionM
 -- Exceptions are rethrown into main thread.
 --
 -- Note: forks thread within same OS thread.
-asyncActionBoundFabric :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
-asyncActionBoundFabric = asyncActionFabricG asyncActionBoundM
+asyncActionBoundFactory :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq a))
+asyncActionBoundFactory = asyncActionFactoryG asyncActionBoundM
 
 -- | Wire that executes incoming 'IO' actions concurrently and then produces
 -- events with results once for each action.
@@ -472,16 +472,16 @@ asyncActionBoundFabric = asyncActionFabricG asyncActionBoundM
 -- Exceptions are returned in event payload.
 --
 -- Note: forks thread within same OS thread.
-asyncActionBoundFabricEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
-asyncActionBoundFabricEx = asyncActionFabricExG asyncActionM
+asyncActionBoundFactoryEx :: (MonadAsync m, Typeable a) => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
+asyncActionBoundFactoryEx = asyncActionFactoryExG asyncActionM
 
 -- | Wire that executes incoming 'IO' actions at end of current frame and then produces
 -- events with results once for each action.
 -- 
 -- Exceptions are rethrown into main thread.
-asyncSyncActionFabric :: forall m a . (MonadAsync m, Typeable a)
+asyncSyncActionFactory :: forall m a . (MonadAsync m, Typeable a)
   => GameWire m (Event (Seq (IO a))) (Event (Seq a))
-asyncSyncActionFabric = go S.empty
+asyncSyncActionFactory = go S.empty
   where 
   go :: Seq SyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq a))
   go is = mkGen $ \_ eios -> do 
@@ -510,9 +510,9 @@ asyncSyncActionFabric = go S.empty
 -- events with results once for each action.
 -- 
 -- Exceptions are rethrown into main thread.
-asyncSyncActionFabricEx :: forall m a . (MonadAsync m, Typeable a)
+asyncSyncActionFactoryEx :: forall m a . (MonadAsync m, Typeable a)
   => GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
-asyncSyncActionFabricEx = go S.empty
+asyncSyncActionFactoryEx = go S.empty
   where 
   go :: Seq SyncId -> GameWire m (Event (Seq (IO a))) (Event (Seq (Either SomeException a)))
   go is = mkGen $ \_ eios -> do 

@@ -19,6 +19,8 @@ import Game.GoreAndAsh.Async
 import Game.GoreAndAsh.Core
 import Prelude hiding (id, (.))
 
+import qualified Data.Sequence as S 
+
 -- | Application monad is monad stack build from given list of modules over base monad (IO or Identity)
 type AppStack = ModuleStack [AsyncT, AsyncT] IO
 newtype AppState = AppState (ModuleState AppStack)
@@ -55,6 +57,7 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       , testCase "except no catch" asyncExcept'
       , testCase "cancel" asyncCancel
       , testCase "cancel delayed" asyncCancelDelayed
+      , testCase "factory" asyncFactory
       ]
     , testGroup "async bound actions" [
         testCase "simple" asyncBoundSimple
@@ -62,12 +65,14 @@ main = withModule (Proxy :: Proxy AppMonad) $ do
       , testCase "except no catch" asyncBoundExcept'
       , testCase "cancel" asyncCancelBound
       , testCase "cancel delayed" asyncCancelBoundDelayed
+      , testCase "factory" asyncFactoryBound
       ]
     , testGroup "async sync actions" [
         testCase "simple" asyncSyncSimple
       , testCase "except" asyncSyncExcept
       , testCase "except no catch" asyncSyncExcept'
       , testCase "cancel" asyncCancelSync
+      , testCase "factory" asyncFactorySync
       ]
     ] mempty
 
@@ -133,6 +138,22 @@ asyncCancelDelayed = do
     io var = do 
       _ <- readMVar var
       return True
+
+asyncFactory :: Assertion 
+asyncFactory = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionFactory -< eio
+    hold . accumE (\i as -> i + sum as) 0 -< eas 
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
 
 asyncExcept' :: Assertion
 asyncExcept' = do 
@@ -206,6 +227,22 @@ asyncCancelBoundDelayed = do
       _ <- readMVar var
       return True
 
+asyncFactoryBound :: Assertion 
+asyncFactoryBound = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncActionBoundFactory -< eio
+    hold . accumE (\i as -> i + sum as) 0 -< eas 
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))
+
 asyncSyncSimple :: Assertion
 asyncSyncSimple = do 
   ma <- runWire 100 w 
@@ -248,3 +285,19 @@ asyncCancelSync = do
       ce <- now -< ()
       e <- asyncSyncActionC (return True) -< ce
       rSwitch (pure False) -< ((), pure <$> e)
+
+asyncFactorySync :: Assertion 
+asyncFactorySync = do 
+  ma <- runWire 100 w
+  assertEqual "summed values" (Just 20) ma
+  where
+  w = proc _ -> do 
+    eio <- wgen -< ()
+    eas <- asyncSyncActionFactory -< eio
+    hold . accumE (\i as -> i + sum as) 0 -< eas 
+
+  wgen :: AppWire () (Event (S.Seq (IO Int))) 
+  wgen = go 2 10
+    where
+    go k 0 = never
+    go k n = mkSFN $ \_ -> (Event $ S.replicate k (return 1), go k (n-1))

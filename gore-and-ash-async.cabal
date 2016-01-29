@@ -1,5 +1,5 @@
 name:                gore-and-ash-async
-version:             0.1.0.0
+version:             1.0.0.0
 synopsis:            Core module for Gore&Ash engine that embeds async IO actions into game loop.
 description:         Please see README.md
 homepage:            https://github.com/TeaspotStudio/gore-and-ash-async#readme

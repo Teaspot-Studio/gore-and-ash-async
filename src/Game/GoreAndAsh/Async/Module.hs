@@ -16,6 +16,7 @@ import Control.Concurrent.Async
 import Control.Monad.Catch
 import Control.Monad.Fix 
 import Control.Monad.State.Strict
+import Data.Proxy 
 
 import Game.GoreAndAsh
 import Game.GoreAndAsh.Async.State
@@ -56,7 +57,7 @@ instance GameModule m s => GameModule (AsyncT s m) (AsyncState s) where
       })
   
   newModuleState = emptyAsyncState <$> newModuleState
-  withModule _ = id
+  withModule _ = withModule (Proxy :: Proxy m)
   cleanupModule _ = return ()
 
 -- | Polls all async values and update values

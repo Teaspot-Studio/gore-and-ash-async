@@ -1,5 +1,5 @@
 name:                gore-and-ash-async
-version:             1.0.1.0
+version:             1.1.0.0
 synopsis:            Core module for Gore&Ash engine that embeds async IO actions into game loop.
 description:         Please see README.md
 homepage:            https://github.com/TeaspotStudio/gore-and-ash-async#readme
@@ -29,9 +29,11 @@ library
                     , gore-and-ash >= 1.1.0.1
                     , hashable >= 1.2.4.0
                     , mtl >= 2.2.1
+                    , resourcet >= 1.1.7.1
                     , transformers >= 0.4.2.0
+                    , transformers-base >= 0.4.4
                     , unordered-containers >= 0.2.5.1
-
+                    
   default-extensions: 
                       BangPatterns
                       DeriveGeneric

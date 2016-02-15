@@ -13,9 +13,12 @@ module Game.GoreAndAsh.Async.Module(
   ) where
 
 import Control.Concurrent.Async
+import Control.Monad.Base
 import Control.Monad.Catch
+import Control.Monad.Error.Class 
 import Control.Monad.Fix 
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Resource
 import Data.Proxy 
 
 import Game.GoreAndAsh
@@ -44,8 +47,14 @@ import qualified Data.Sequence as S
 --
 -- The module is NOT pure within first phase (see 'ModuleStack' docs), therefore currently only 'IO' end monad can handler the module.
 newtype AsyncT s m a = AsyncT { runAsyncT :: StateT (AsyncState s) m a }
-  deriving (Functor, Applicative, Monad, MonadState (AsyncState s), MonadFix, MonadTrans, MonadIO, MonadThrow, MonadCatch, MonadMask)
+  deriving (Functor, Applicative, Monad, MonadState (AsyncState s), MonadFix, MonadTrans, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadError e)
 
+instance MonadBase IO m => MonadBase IO (AsyncT s m) where
+  liftBase = AsyncT . liftBase
+
+instance MonadResource m => MonadResource (AsyncT s m) where 
+  liftResourceT = AsyncT . liftResourceT
+  
 instance GameModule m s => GameModule (AsyncT s m) (AsyncState s) where 
   type ModuleState (AsyncT s m) = AsyncState s
   runModule (AsyncT m) s1 = do

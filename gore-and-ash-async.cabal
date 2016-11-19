@@ -1,5 +1,5 @@
 name:                gore-and-ash-async
-version:             1.1.0.0
+version:             1.1.1.0
 synopsis:            Core module for Gore&Ash engine that embeds async IO actions into game loop.
 description:         Please see README.md
 homepage:            https://github.com/TeaspotStudio/gore-and-ash-async#readme
@@ -11,6 +11,10 @@ copyright:           2016 Anton Gushcha
 category:            Game
 build-type:          Simple
 cabal-version:       >=1.10
+extra-source-files:
+  README.md
+  CHANGELOG.md
+  stack.yaml 
 
 library
   hs-source-dirs:     src
